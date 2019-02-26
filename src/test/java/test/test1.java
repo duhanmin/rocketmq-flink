@@ -30,7 +30,7 @@ public class test1 {
         /*        consumerProps.setProperty(RocketMQConfig.CONSUMER_OFFSET_FROM_TIMESTAMP, "1250547246000");*/
 
         Properties producerProps = new Properties();
-        producerProps.setProperty(RocketMQConfig.NAME_SERVER_ADDR, "172.16.245.37:9876");
+        producerProps.setProperty(RocketMQConfig.NAME_SERVER_ADDR, "172.16.*.*:9876");
 
         env.addSource(new MQSource(new SimpleKeyValueDeserializationSchema(), consumerProps))
                 .name("rocketmq-source")

@@ -1,5 +1,6 @@
 package org.apache.rocketmq.flink;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -106,8 +107,8 @@ public class MQSource<OUT> extends RichParallelSourceFunction<OUT> implements Re
 
                                 // output and state update are atomic
                                 synchronized (lock) {
-                                    putMessageQueueOffset(mq, pullResult.getNextBeginOffset());
-                                    context.collectWithTimestamp(data, msg.getBornTimestamp());
+                                    putMessageQueueOffset(mq, offset+1);
+                                    context.collectWithTimestamp(data, bornTimestamp);
                                 }
                             }
                             found = true;
@@ -122,6 +123,10 @@ public class MQSource<OUT> extends RichParallelSourceFunction<OUT> implements Re
                             break;
                         default:
                             break;
+                    }
+
+                    synchronized (lock) {
+                        putMessageQueueOffset(mq, pullResult.getNextBeginOffset());
                     }
 
                     if (found) {
@@ -190,27 +195,69 @@ public class MQSource<OUT> extends RichParallelSourceFunction<OUT> implements Re
                 case CONSUMER_OFFSET_SITE:
                     String site = props.getProperty(RocketMQConfig.CONSUMER_OFFSET_SITE_STARTING_OFFSETS, DEFAULT_CONSUMER_OFFSET_SITE_STARTING_OFFSETS);
                     if (site.equals(DEFAULT_CONSUMER_OFFSET_SITE_STARTING_OFFSETS))
-                        offset = consumer.maxOffset(mq);
+                        throw new RuntimeException("offset没有配置......");
                     else
-                    /**
-                     * ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
-                     * |        指定offset位置启动       |
-                     * ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
-                     */
-                        offset = 0L;
+                        offset = getMessageQueueStartingOffsets(mq, site);
                     break;
                 default:
-                    throw new RuntimeException("Initialization failed......");
+                    offset = consumer.fetchConsumeOffset(mq, false);
+                    LOG.error("Unknown value for CONSUMER_OFFSET_RESET_TO.");
             }
             this.runOffset = Boolean.TRUE;
         }else if (runOffset.equals(Boolean.TRUE)) {
             offset = offsetTable.get(mq);
         }else {
-            throw new RuntimeException("runOffset condition exception......");
+            throw new RuntimeException("Initialization failed......");
         }
         return offset;
     }
 
+    private static final String EARLIEST = "-2";
+    private static final String LATEST = "-1";
+    /**
+     * 获取外部保存的offset，可以实现指定位置启动
+     * @param mq
+     * @param site
+     * @return
+     */
+    private Long getMessageQueueStartingOffsets(MessageQueue mq, String site) throws MQClientException {
+        Map<MessageQueue, Long> map = getMessageQueueSite(site);
+        Long offset = map.get(mq);
+        if (offset.equals(LATEST))
+            offset = consumer.maxOffset(mq);
+        else if (offset.equals(EARLIEST))
+            offset = consumer.minOffset(mq);
+        else if (offset.equals(null) || offset == null){
+            offset = consumer.minOffset(mq);
+            LOG.error("没找到offset，该分区从最新位置启动......");
+        } else
+            return offset;
+        return offset;
+    }
+
+    /**
+     * 将外部配置好的offsetJSON转换成Map<MessageQueue, Long>
+     * @param site
+     * @return
+     */
+    private Map<MessageQueue, Long> getMessageQueueSite(String site) {
+        Map<MessageQueue, Long> map = new ConcurrentHashMap<>();
+        JSONObject siteJson = JSON.parseObject(site);
+        for (Map.Entry<String, Object> siteMap : siteJson.entrySet()) {
+            JSONObject broker = JSON.parseObject(siteMap.getValue().toString());
+            for (Map.Entry<String, Object> brokerMap : broker.entrySet()) {
+                JSONObject queue = JSON.parseObject(brokerMap.getValue().toString());
+                for (Map.Entry<String, Object> queueMap : queue.entrySet()) {
+                    MessageQueue mq = new MessageQueue();
+                    mq.setTopic(siteMap.getKey());
+                    mq.setBrokerName(brokerMap.getKey());
+                    mq.setQueueId(Integer.parseInt(queueMap.getKey()));
+                    map.put(mq,Long.parseLong(queueMap.getValue().toString()));
+                }
+            }
+        }
+        return map;
+    }
     /**
      * 更新offsetTable中保存的最新状态
      * @param mq

@@ -88,9 +88,11 @@ public class MQSource<OUT> extends RichParallelSourceFunction<OUT> implements Re
                 try {
                     long offset = getMessageQueueOffset(mq);
                     if (offset < 0) {
+                        System.err.println("----------"+offsetTable);
                         return;
                     }
                     PullResult pullResult = consumer.pullBlockIfNotFound(mq, tag, offset, pullBatchSize);
+                    putMessageQueueOffset(mq, offset,pullResult);
                     boolean found = false;
                     switch (pullResult.getPullStatus()) {
                         case FOUND:
@@ -107,7 +109,6 @@ public class MQSource<OUT> extends RichParallelSourceFunction<OUT> implements Re
 
                                 // output and state update are atomic
                                 synchronized (lock) {
-                                    putMessageQueueOffset(mq, offset+1);
                                     context.collectWithTimestamp(data, bornTimestamp);
                                 }
                             }
@@ -124,11 +125,6 @@ public class MQSource<OUT> extends RichParallelSourceFunction<OUT> implements Re
                         default:
                             break;
                     }
-
-                    synchronized (lock) {
-                        putMessageQueueOffset(mq, pullResult.getNextBeginOffset());
-                    }
-
                     if (found) {
                         pullTaskContext.setPullNextDelayTimeMillis(0); // no delay when messages were found
                     } else {
@@ -207,7 +203,8 @@ public class MQSource<OUT> extends RichParallelSourceFunction<OUT> implements Re
         }else if (runOffset.equals(Boolean.TRUE)) {
             offset = offsetTable.get(mq);
         }else {
-            throw new RuntimeException("Initialization failed......");
+            offset = consumer.fetchConsumeOffset(mq, false);
+            LOG.error("Initialization failed......");
         }
         return offset;
     }
@@ -264,7 +261,11 @@ public class MQSource<OUT> extends RichParallelSourceFunction<OUT> implements Re
      * @param offset
      * @throws MQClientException
      */
-    private void putMessageQueueOffset(MessageQueue mq, long offset) throws MQClientException {
+    private void putMessageQueueOffset(MessageQueue mq, long offset,PullResult pullResult) throws MQClientException {
+        long offsets = pullResult.getNextBeginOffset();
+        long tmpOffset = offset + 1;
+        if (tmpOffset > offsets) offset = offsets;
+        else offset = tmpOffset;
         offsetTable.put(mq, offset);
         consumer.updateConsumeOffset(mq, offset);
     }

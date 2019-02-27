@@ -25,32 +25,37 @@ public class test1 {
         Properties consumerProps = new Properties();
         consumerProps.setProperty(RocketMQConfig.NAME_SERVER_ADDR, "172.16.245.37:9876");
         consumerProps.setProperty(RocketMQConfig.CONSUMER_GROUP, "c002");
-        consumerProps.setProperty(RocketMQConfig.CONSUMER_TOPIC, "1");
+        consumerProps.setProperty(RocketMQConfig.CONSUMER_TOPIC, "2");
+/*
+        consumerProps.setProperty(RocketMQConfig.CONSUMER_OFFSET_RESET_TO, RocketMQConfig.CONSUMER_OFFSET_SITE);
+        consumerProps.setProperty(RocketMQConfig.CONSUMER_OFFSET_SITE_STARTING_OFFSETS, "{\"2\":{\"iZbp1f9edjszup3fshxxheZ\":{\"0\":2,\"1\":3,\"2\":4,\"3\":3,\"4\":4,\"5\":3,\"6\":4,\"7\":5}}}");
+*/
         consumerProps.setProperty(RocketMQConfig.CONSUMER_OFFSET_RESET_TO, RocketMQConfig.CONSUMER_OFFSET_EARLIEST);
-        /*        consumerProps.setProperty(RocketMQConfig.CONSUMER_OFFSET_FROM_TIMESTAMP, "1250547246000");*/
+
 
         Properties producerProps = new Properties();
-        producerProps.setProperty(RocketMQConfig.NAME_SERVER_ADDR, "172.16.*.*:9876");
+        producerProps.setProperty(RocketMQConfig.NAME_SERVER_ADDR, "172.16.245.37:9876");
 
         env.addSource(new MQSource(new SimpleKeyValueDeserializationSchema(), consumerProps))
                 .name("rocketmq-source")
-                .setParallelism(4)
+                .setParallelism(8)
                 .process(new ProcessFunction<JSONObject, Map>() {
                     @Override
                     public void processElement(JSONObject in, Context ctx, Collector<Map> out) throws Exception {
                         HashMap result = new HashMap();
                         HashMap result2 = new HashMap();
+                        in.remove("value");
                         System.err.println(in);
                         result.putAll(result2);
                         out.collect(result);
                     }
                 })
                 .name("upper-processor")
-                .setParallelism(4)
+                .setParallelism(8)
                 .addSink(new RocketMQSink(new SimpleKeyValueSerializationSchema("id", "province"),
                         new DefaultTopicSelector("flink-sink2"), producerProps).withBatchFlushOnCheckpoint(true))
                 .name("rocketmq-sink")
-                .setParallelism(4);
+                .setParallelism(8);
 
         try {
             env.execute("rocketmq-flink-example");

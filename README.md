@@ -8,5 +8,8 @@ RocketMQ integration for [Apache Flink](https://flink.apache.org/). This module 
 * 新增功能：实现指定offset定点位置启动
 * 修复bug：自带checkpoint灵活性差，且会导致重新配置消费旧数据失效
 
+# 问题
+测试发现，部分分区可能会出现丢失
+
 # 赞助
 <img src="https://github.com/duhanmin/mathematics-statistics-python/blob/master/images/90f9a871536d5910cad6c10f0297fc7.jpg" width="250">

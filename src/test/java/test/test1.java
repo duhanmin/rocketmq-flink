@@ -34,7 +34,7 @@ public class test1 {
 
 
         Properties producerProps = new Properties();
-        producerProps.setProperty(RocketMQConfig.NAME_SERVER_ADDR, "172.16.245.37:9876");
+        producerProps.setProperty(RocketMQConfig.NAME_SERVER_ADDR, "172.*.*.*:9876");
 
         env.addSource(new MQSource(new SimpleKeyValueDeserializationSchema(), consumerProps))
                 .name("rocketmq-source")
